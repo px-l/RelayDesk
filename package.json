@@ -1,0 +1,46 @@
+{
+  "name": "relaydesk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RelayDesk 接力工作台",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist-electron/backend/main.js",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "npm run build && electron .",
+    "dev:web": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.backend.json --noEmit",
+    "build": "tsc -p tsconfig.backend.json && vite build",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "smoke": "npm run build && electron . --smoke"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^1.47.0",
+    "papaparse": "^5.5.3",
+    "pdfjs-dist": "^6.4.299",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.1.12",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^24.10.0",
+    "@types/papaparse": "^5.3.16",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "electron": "44.9.3",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.20.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0"
+  }
+}

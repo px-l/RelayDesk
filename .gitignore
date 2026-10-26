@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+.env*
+*.sqlite*
+*.log
+.DS_Store
+artifacts/
+!.env.example
