@@ -60,3 +60,15 @@ stateDiagram-v2
 凭据经系统密钥加密后保存，渲染层仅见是否存在；OAuth clientSecret 在独立服务端。远程鉴权主机受限，下载不跟随重定向，不把 ACP token 传给第三方 URL。
 
 测试集中于去重、终态、并发派发声明、交接归属、目录边界、取消与重启数据；两组协议替身验证官方方法顺序、响应关联、公开增量过滤及远端恢复不重发。Electron smoke 验证真正窗口、桥接、SQLite、预览和接力编辑界面。真实账号联调是独立验收项。
+
+## 7. Python 检查 Agent 与可选阶段
+
+2026-10-27 新增：资料检查 → 引擎生成 → 成果审核。Node 保留所有后端职责，Python 承担检索与模型分析。`backend/check-agent.ts` 只是 Python 子进程运输与 Zod 信任边界；Prompt、DeepSeek HTTP、引用匹配、缺口与语义结果分类位于 `agent_runtime/worker.py`。
+
+专用阶段服务 `backend/quality/service.ts` 管状态、互斥、基线和快照，不承载模型推理。它通过本地 `flow.updated` 事件通知前端，区别于厂商事件，不把审核问题伪造为 task.failed。准备/审核使用独立运行记录；旧数据库以 CREATE TABLE IF NOT EXISTS 添加三张表，已有 Task 不强制开启流程。
+
+准备结果包含逐项 RequirementCheck。模型的可支撑判断必须能定位原文，规则模式只返回部分支撑/无法判断。用户确认缺口与生成限制后，插入不可覆盖的 Baseline；每次确认为新版本。TaskService 在原来的派发声明前校验最新基线、资料 hash、检查模式及互斥状态，持久化 generationBaselineId 后才调用引擎。生成时提供冻结附件，云端只提供授权摘录，不发送本地路径。
+
+审核只能读取生成时绑定的基线，不能在任务完成后创建基线。ReviewReport 关联 baselineId、artifactId、成果版本和内容 hash，并保留成果字节快照；公开回答同样冻结。文件修改、成果版本替换、同名更高版本或快照损坏使当前有效性失效，但不改写旧报告。审核返回需修改是业务结果；运行状态仍是 completed。修订通过用户确认创建原引擎关联草稿，随后重新准备，不对有副作用的旧任务执行自动重试。
+
+恢复语义：应用重启后检查的 running 记录变 interrupted，仅恢复可查看历史，不自动重新调用模型。阶段结果不会改变既有远端任务的完成状态。第一版为固定、可验证的两次 AI 检查，不提供动态 DAG、LangGraph Checkpoint、向量检索或任意工具循环；可在稳定的 Python 进程协议后替换内部实现。

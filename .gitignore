@@ -7,3 +7,7 @@ dist-electron/
 .DS_Store
 artifacts/
 !.env.example
+__pycache__/
+*.pyc
+.venv/
+.relaydesk/

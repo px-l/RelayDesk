@@ -16,3 +16,5 @@ export async function writeOutput(root:string,taskId:string,name:string,content:
  await writeFile(target,content,{flag:'wx'});return within(root,target);
 }
 export async function readable(root:string,target:string){const file=await within(root,target);const s=await stat(file);if(!s.isFile()||s.size>20*1024*1024)throw new Error('仅支持预览 20MB 以下的普通文件');return file;}
+
+export function mimeForName(name:string){const types:Record<string,string>={'.md':'text/markdown','.markdown':'text/markdown','.txt':'text/plain','.csv':'text/csv','.json':'application/json','.pdf':'application/pdf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.html':'text/html','.htm':'text/html','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation'};return types[path.extname(name).toLowerCase()]||'application/octet-stream';}

@@ -14,5 +14,5 @@ export function connect(){if(initialized)return;initialized=true;let queue:TaskE
  window.relaydesk?.subscribe(e=>{queue.push(e);if(!timer)timer=setTimeout(()=>{const batch=queue;queue=[];timer=undefined;useDesk.getState().flush(batch);if(batch.some(e=>e.type!=='message.delta'))void useDesk.getState().refresh();},60);});
  void useDesk.getState().refresh();
  // Read-only local refresh also catches transport interruptions (not remote re-execution).
- setInterval(()=>{if(useDesk.getState().snapshot.tasks.some(t=>['starting','running','waiting_input','cancelling'].includes(t.status)))void useDesk.getState().refresh();},2000);
+ setInterval(()=>{if(useDesk.getState().snapshot.flowBusyTaskIds?.length||useDesk.getState().snapshot.tasks.some(t=>['starting','running','waiting_input','cancelling'].includes(t.status)))void useDesk.getState().refresh();},2000);
 }

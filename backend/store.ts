@@ -1,5 +1,5 @@
 import {DatabaseSync} from 'node:sqlite';
-import type {Artifact,Task,TaskEvent,Workspace} from '../shared/types.js';
+import type {Artifact,Task,TaskEvent,Workspace,PreparationRun,Baseline,ReviewReport} from '../shared/types.js';
 import {transition} from '../shared/domain.js';
 export class Store {
  readonly db:DatabaseSync;
@@ -8,6 +8,9 @@ export class Store {
  CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,data TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS events(task_id TEXT NOT NULL,event_id TEXT NOT NULL,sequence INTEGER NOT NULL,data TEXT NOT NULL,PRIMARY KEY(task_id,event_id));
  CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,data TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS preparations(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,data TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS baselines(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,version INTEGER NOT NULL,data TEXT NOT NULL,UNIQUE(task_id,version));
+ CREATE TABLE IF NOT EXISTS reviews(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,data TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS events_task ON events(task_id,sequence);`);}
  list<T>(table:'tasks'|'workspaces'|'artifacts'):T[]{return (this.db.prepare(`SELECT data FROM ${table} ORDER BY rowid DESC`).all() as {data:string}[]).map(r=>JSON.parse(r.data));}
  putWorkspace(w:Workspace){this.db.prepare('INSERT INTO workspaces VALUES (?,?)').run(w.id,JSON.stringify(w));}
@@ -31,5 +34,12 @@ export class Store {
  if(e.type==='artifact.deleted')this.db.prepare('DELETE FROM artifacts WHERE id=? AND task_id=?').run(e.artifactId,e.taskId);
  this.putTask(t);this.db.exec('COMMIT');return true;
  }catch(err){this.db.exec('ROLLBACK');throw err;}}
+ preparations(taskId:string):PreparationRun[]{return this.records<PreparationRun>('preparations',taskId);}
+ baselines(taskId:string):Baseline[]{return this.records<Baseline>('baselines',taskId);}
+ reviews(taskId:string):ReviewReport[]{return this.records<ReviewReport>('reviews',taskId);}
+ private records<T>(table:'preparations'|'baselines'|'reviews',taskId:string):T[]{return (this.db.prepare(`SELECT data FROM ${table} WHERE task_id=? ORDER BY rowid DESC`).all(taskId) as {data:string}[]).map(r=>JSON.parse(r.data));}
+ putPreparation(r:PreparationRun){this.db.prepare('INSERT INTO preparations VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(r.id,r.taskId,JSON.stringify(r));}
+ putReview(r:ReviewReport){this.db.prepare('INSERT INTO reviews VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(r.id,r.taskId,JSON.stringify(r));}
+ insertBaseline(b:Baseline){this.db.prepare('INSERT INTO baselines VALUES (?,?,?,?)').run(b.id,b.taskId,b.version,JSON.stringify(b));}
  close(){this.db.close();}
 }

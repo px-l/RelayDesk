@@ -16,7 +16,9 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.backend.json --noEmit",
     "build": "tsc -p tsconfig.backend.json && vite build",
     "test": "node --import tsx --test tests/*.test.ts",
-    "smoke": "npm run build && electron . --smoke"
+    "smoke": "npm run build && electron . --smoke",
+    "test:python": "python3 -B -m unittest discover -s agent_runtime/tests -v",
+    "check": "npm run typecheck && npm test && npm run test:python && npm run build"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
