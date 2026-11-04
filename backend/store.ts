@@ -11,7 +11,9 @@ export class Store {
  CREATE TABLE IF NOT EXISTS preparations(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,data TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS baselines(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,version INTEGER NOT NULL,data TEXT NOT NULL,UNIQUE(task_id,version));
  CREATE TABLE IF NOT EXISTS reviews(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,data TEXT NOT NULL);
- CREATE INDEX IF NOT EXISTS events_task ON events(task_id,sequence);`);}
+ CREATE INDEX IF NOT EXISTS events_task ON events(task_id,sequence);
+ UPDATE tasks SET data=json_set(data,'$.engine','retired') WHERE json_extract(data,'$.engine')='workbuddy';
+ UPDATE artifacts SET data=json_set(data,'$.engine','retired') WHERE json_extract(data,'$.engine')='workbuddy';`);}
  list<T>(table:'tasks'|'workspaces'|'artifacts'):T[]{return (this.db.prepare(`SELECT data FROM ${table} ORDER BY rowid DESC`).all() as {data:string}[]).map(r=>JSON.parse(r.data));}
  putWorkspace(w:Workspace){this.db.prepare('INSERT INTO workspaces VALUES (?,?)').run(w.id,JSON.stringify(w));}
  putTask(t:Task){this.db.prepare('INSERT INTO tasks VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(t.id,JSON.stringify(t));}

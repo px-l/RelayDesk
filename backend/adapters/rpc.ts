@@ -27,8 +27,3 @@ export class AcpEvents {
  }
  finish(result:any){if(result?.stopReason==='cancelled')this.emit({type:'task.cancelled'});else if(result?.stopReason==='end_turn')this.emit({type:'task.completed'});else this.emit({type:'task.failed',error:`本轮未正常完成：${String(result?.stopReason||'未知结束原因')}`});}
 }
-export function parseSseBlock(block:string):{id?:string;data:string}|undefined{
- let id:string|undefined;const data:string[]=[];
- for(const line of block.split('\n')){if(line.startsWith('id:'))id=line.slice(3).trim();if(line.startsWith('data:'))data.push(line.slice(5).trimStart());}
- return data.length?{id,data:data.join('\n')}:undefined;
-}

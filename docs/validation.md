@@ -3,17 +3,16 @@
 日期：2026-10-26（Asia/Shanghai）。macOS arm64，开发 Node 24.14.0，Electron 44.9.3。
 
 - `npm run typecheck`：前端、共享类型、本地后端通过。
-- `npm test`：18 项通过，0 失败；含 SQLite 去重/原子更新、状态、并发派发、授权目录软链接、失败与取消、接力归属和原始目标保留、关闭重开数据库、DSH stdio 与 WorkBuddy REST/SSE 协议替身。
+- `npm test`：18 项通过，0 失败；含 SQLite 去重/原子更新、状态、并发派发、授权目录软链接、失败与取消、接力归属和原始目标保留、关闭重开数据库、DSH stdio 协议替身。
 - `npm run build`：通过。存在图标包 use-client 指令与主包体积提示，记录为非阻塞优化项。
 - `npm run smoke`：真实 Electron 44.9.3 窗口启动成功，两个关联 Demo 任务完成，8 个工作区成果文件，Markdown/CSV/PNG/PDF 读取成功；PDF canvas 实际绘制，交接编辑器五部分内容存在。
 - `npm audit`：0 vulnerabilities。
-- OAuth 参考实现：语法检查通过，未持有 clientSecret 或进行线上授权交换。
 
 桌面截图：[任务](screenshots/task.png)、[PDF 实际绘制](screenshots/pdf-preview.png)、[交接包](screenshots/handoff.png)。
 
 系统运行时输出过一条 macOS sandbox extension 的资源路径提示，未阻止渲染器、preload、SQLite 或 PDF 工作；smoke 以 0 退出。没有禁用 Electron sandbox 规避检查。
 
-不宣称：真实 DSH 模型调用、WorkBuddy 账号授权、云端模型执行、线上成果下载、系统凭据实际写入或其他操作系统已通过。真实外部条件见 README。
+不宣称：真实 DSH 模型调用、云端模型执行、线上成果下载、系统凭据实际写入或其他操作系统已通过。真实外部条件见 README。
 
 ## 新增资料准备与成果审核 · 2026-10-27
 
@@ -25,4 +24,10 @@
 - 结果明确保持：规则检查/演示生成不产生真实语义审核通过；未解析、截断与无证据均显示限制，需修改属于已完成的业务结果。
 - 截图：[资料检查](screenshots/preparation.png)、[审核报告](screenshots/quality-review.png)。
 
-尚未验证真实 DeepSeek Key 的账号、额度和模型调用；按官方 JSON API 实现的语义通路需用户配置后联调。DSH / WorkBuddy 的真实账号验证条件与原记录一致。未声称实现向量 RAG、自动联网补资料、动态多 Agent 或 LangGraph Checkpoint。
+尚未验证真实 DeepSeek Key 的账号、额度和模型调用；按官方 JSON API 实现的语义通路需用户配置后联调。DSH 的真实账号验证条件与原记录一致。未声称实现向量 RAG、自动联网补资料、动态多 Agent 或 LangGraph Checkpoint。
+
+## Codex CLI 接入 · 2026-11-04
+
+- 通过本机已登录的 Codex CLI 实测 Demo → Codex 的任务接力。Codex 读取交接的 Markdown 附件，生成新的 Markdown，RelayDesk 保存会话 ID、任务关联并导入成果。
+- 本地协议测试覆盖 CLI 登录检测、事件转换、进程取消、失败状态及成果目录的符号链接过滤。
+- macOS Electron smoke 通过，覆盖 Demo 任务接力、四种成果预览及 Python 检查与审核流程。

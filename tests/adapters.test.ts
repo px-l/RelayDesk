@@ -1,24 +1,70 @@
 // Protocol fixtures exercise our client. They are not vendor end-to-end validation.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,chmod} from 'node:fs/promises';
+import {mkdtemp,writeFile,chmod,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DshAdapter} from '../backend/adapters/dsh.ts';
-import {WorkBuddyAdapter,trustedEngineUrl} from '../backend/adapters/workbuddy.ts';
+import {CodexAdapter} from '../backend/adapters/codex.ts';
 import type {Task,TaskEvent} from '../shared/types.ts';
-function context(){const task:Task={id:'t',workspaceId:'w',title:'goal',goal:'请执行',engine:'workbuddy',createdAt:'',updatedAt:'',status:'draft',dispatched:false,inputs:[]};const events:TaskEvent[]=[];return {events,task,workspace:{id:'w',directory:tmpdir(),name:'w',createdAt:''},bindRemote:(id:string)=>{task.remoteId=id;},emit:(e:TaskEvent)=>events.push(e)};}
+function context(){const task:Task={id:'t',workspaceId:'w',title:'goal',goal:'请执行',engine:'dsh',createdAt:'',updatedAt:'',status:'draft',dispatched:false,inputs:[]};const events:TaskEvent[]=[];return {events,task,workspace:{id:'w',directory:tmpdir(),name:'w',createdAt:''},bindRemote:(id:string)=>{task.remoteId=id;},emit:(e:TaskEvent)=>events.push(e)};}
 test('DSH 官方 ACP stdio 调用契约（本地协议替身）',async()=>{const dir=await mkdtemp(path.join(tmpdir(),'relaydesk-rpc-'));const exe=path.join(dir,'fixture');await writeFile(exe,`#!${process.execPath}\nconst rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);const send=x=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...x})+'\\n');if(m.method==='initialize')send({id:m.id,result:{protocolVersion:1}});else if(m.method==='session/new')send({id:m.id,result:{sessionId:'session-real-shape'}});else if(m.method==='session/prompt'){send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'fixture response'}}}});send({id:m.id,result:{stopReason:'end_turn'}});}});`);await chmod(exe,0o700);const adapter=new DshAdapter(()=>exe);assert.equal((await adapter.check()).state,'ready');const c=context();c.task.engine='dsh';const subscribed:TaskEvent[]=[];const unsubscribe=adapter.subscribe(c.task.id,e=>subscribed.push(e));await adapter.createTask(c);assert.equal(subscribed.length,c.events.length);unsubscribe();assert.equal(c.task.remoteId,'session-real-shape');assert.ok(c.events.some(e=>e.type==='message.delta'));assert.equal(c.events.at(-1)?.type,'task.completed');adapter.dispose();});
-test('WorkBuddy REST → SSE / JSON-RPC → 公开增量与成果（协议替身）',async()=>{const original=globalThis.fetch;const calls:{url:string;method:string;body:any}[]=[];let controller:ReadableStreamDefaultController<Uint8Array>;const encoder=new TextEncoder();const push=(m:any,id?:string)=>controller.enqueue(encoder.encode(`${id?'id: '+id+'\n':''}data: ${JSON.stringify(m)}\n\n`));
- globalThis.fetch=(async(input:any,init:any={})=>{const url=String(input);const method=init.method||'GET';const body=init.body?JSON.parse(init.body):undefined;calls.push({url,method,body});
- if(url.endsWith('/tasks')&&method==='POST')return Response.json({task_id:'remote-123',link:'https://test.agentos-run.net/acp',token:'fixture-ticket'});
- if(url.includes('/tasks/remote-123'))return Response.json({task_id:'remote-123',status:'completed',link:'https://test.agentos-run.net/acp',token:'fixture-ticket'});
- if(url.includes('/api/session/artifacts'))return Response.json({code:0,data:{artifacts:[{sessionId:'remote-123',event:'created',artifact:{type:'overview',uri:'agent:///artifacts/result.md',text:'公开总结',mimeType:'text/markdown',version:2}}]}});
- if(method==='GET')return new Response(new ReadableStream({start(c){controller=c;init.signal?.addEventListener('abort',()=>c.close(),{once:true});}}),{headers:{'Content-Type':'text/event-stream','Acp-Connection-Id':'connection-1'}});
- assert.equal(init.headers['Acp-Connection-Id'],'connection-1');
- if(body.method==='session/prompt'){const update={jsonrpc:'2.0',method:'session/update',params:{sessionId:'remote-123',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'真实形状的公开文本'}}}};push(update,'cursor-1');push(update,'cursor-1');push({id:body.id,result:{stopReason:'end_turn'}});}
- else push({id:body.id,result:{protocolVersion:1}});
- return new Response(null,{status:202});}) as typeof fetch;
- try{const a=new WorkBuddyAdapter(()=>'fixture-token');const c=context();await a.createTask(c);assert.equal(c.task.remoteId,'remote-123');assert.deepEqual(calls.filter(x=>x.method==='POST'&&x.body?.method).map(x=>x.body.method),['initialize','session/load','session/prompt']);assert.equal(calls.filter(x=>x.url.endsWith('/tasks')&&x.method==='POST').length,1);const deltas=c.events.filter(e=>e.type==='message.delta');assert.equal(deltas[0].eventId,deltas[1].eventId);assert.equal(c.events.at(-1)?.type,'task.completed');const before=calls.length;await a.recover(c);assert.ok(calls.slice(before).every(x=>x.method==='GET'));const arts=await a.getArtifacts(c.task);assert.equal(arts[0].version,2);assert.equal(arts[0].location.kind,'remote');assert.equal(Buffer.from(await a.downloadArtifact(c.task,arts[0])).toString(),'公开总结');a.dispose();}finally{globalThis.fetch=original;}
+
+test('Codex CLI 接收附件和需求，只导入合规成果，并验证完成事件',{timeout:10000},async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'relaydesk-codex-'));
+ const exe=path.join(dir,'fixture');
+ const input=path.join(dir,'source.md');
+ await writeFile(input,'授权资料');
+ await writeFile(exe,`#!${process.execPath}
+ const fs=require('node:fs');
+ const args=process.argv.slice(2);
+ if(args.includes('--help')){console.log('--json --sandbox');process.exit(0);}
+ if(args[0]==='login')process.exit(0);
+ const send=(type,body={})=>console.log(JSON.stringify({type,...body}));
+ if(!args.includes('workspace-write')||!args.includes('--json'))process.exit(1);
+ const prompt=fs.readFileSync(0,'utf8');
+ if(!prompt.includes('input/1-source.md')||fs.readFileSync('input/1-source.md','utf8')!=='授权资料')process.exit(1);
+ send('thread.started',{thread_id:'codex-fixture'});
+ if(prompt.includes('取消测试')){setInterval(()=>{},1000);return;}
+ if(prompt.includes('失败测试')){send('turn.failed');process.exit(0);}
+ send('item.started',{item:{id:'tool-1',type:'command_execution'}});
+ send('item.completed',{item:{id:'tool-1',type:'command_execution'}});
+ fs.writeFileSync('output/报告.md','# 测试成果');
+ fs.symlinkSync('../input/1-source.md','output/link.md');
+ send('item.completed',{item:{id:'message-1',type:'agent_message',text:'成果已写入'}});
+ send('turn.completed');
+ `);
+ await chmod(exe,0o700);
+ const adapter=new CodexAdapter(()=>exe);
+ assert.equal((await adapter.check()).state,'ready');
+ const prepare=(id:string,goal:string)=>{
+  const c=context();
+  c.workspace.directory=dir;
+  Object.assign(c.task,{id,goal,engine:'codex',inputs:[{id:'source',name:'source.md',path:input,size:12}]});
+  return c;
+ };
+ try{
+  const c=prepare('success','完成测试');
+  await adapter.createTask(c);
+  assert.equal(c.task.remoteId,'codex-fixture');
+  assert.deepEqual(c.events.map(e=>e.type),['task.started','tool.started','tool.completed','message.delta','artifact.created','task.completed']);
+  const result=c.events.find(e=>e.type==='artifact.created');
+  assert.equal(result?.artifact.name,'报告.md');
+  const failed=prepare('failed','失败测试');
+  await adapter.createTask(failed);
+  assert.equal(failed.events.at(-1)?.type,'task.failed');
+  const cancelled=prepare('cancelled','取消测试');
+  const run=adapter.createTask(cancelled);
+  await new Promise<void>(resolve=>{
+   const unsubscribe=adapter.subscribe(cancelled.task.id,e=>{
+    if(e.type==='task.started'){unsubscribe();resolve();}
+   });
+  });
+  await adapter.cancel(cancelled.task);
+  await run;
+  assert.equal(cancelled.events.at(-1)?.type,'task.cancelled');
+ }finally{
+  adapter.dispose();
+  await rm(dir,{recursive:true,force:true});
+ }
 });
-test('ACP 地址拒绝任意主机、HTTP、用户密码和自定义端口',()=>{for(const url of ['http://acp.workbuddy.cn/acp','https://evil.example/acp','https://acp.workbuddy.cn.evil.example/acp','https://user:pass@acp.workbuddy.cn/acp','https://acp.workbuddy.cn:8080/acp'])assert.equal(trustedEngineUrl(new URL(url)),false);assert.equal(trustedEngineUrl(new URL('https://a.ap-guangzhou.agentos-run.net/acp')),true);});

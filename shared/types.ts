@@ -1,11 +1,12 @@
-export type EngineId = 'demo' | 'demo-review' | 'dsh' | 'workbuddy';
+export type EngineId = 'demo' | 'demo-review' | 'dsh' | 'codex';
+export type RecordedEngineId = EngineId | 'retired';
 export type TaskStatus = 'draft'|'starting'|'running'|'waiting_input'|'cancelling'|'interrupted'|'completed'|'failed'|'cancelled';
 export interface Capabilities {stream:boolean;tools:boolean;files:boolean;artifacts:boolean;cancel:boolean;resume:boolean;approval:boolean;}
 export interface EngineInfo {id:EngineId;name:string;mode:'demo'|'real';state:'ready'|'unconfigured'|'unverified'|'error';detail:string;capabilities:Capabilities;}
 export interface Workspace {id:string;name:string;directory:string;createdAt:string;}
 export interface InputFile {id:string;name:string;path:string;size:number;}
-export interface Task {id:string;workspaceId:string;engine:EngineId;title:string;goal:string;originalGoal?:string;status:TaskStatus;createdAt:string;updatedAt:string;remoteId?:string;parentId?:string;handoff?:string;inputs:InputFile[];summary?:string;error?:string;dispatched:boolean;flow?:FlowOptions;generationBaselineId?:string;reviewError?:string;pendingApprovals?:{requestId:string;description:string;options:{id:string;label:string}[]}[];}
-export interface Artifact {id:string;taskId:string;engine:EngineId;name:string;mime:string;version:number;createdAt:string;sourceRemoteFileId?:string;inlineText?:string;location:{kind:'local';path:string}|{kind:'remote';fileId:string;downloadUrl?:string};}
+export interface Task {id:string;workspaceId:string;engine:RecordedEngineId;title:string;goal:string;originalGoal?:string;status:TaskStatus;createdAt:string;updatedAt:string;remoteId?:string;parentId?:string;handoff?:string;inputs:InputFile[];summary?:string;error?:string;dispatched:boolean;flow?:FlowOptions;generationBaselineId?:string;reviewError?:string;pendingApprovals?:{requestId:string;description:string;options:{id:string;label:string}[]}[];}
+export interface Artifact {id:string;taskId:string;engine:RecordedEngineId;name:string;mime:string;version:number;createdAt:string;sourceRemoteFileId?:string;inlineText?:string;location:{kind:'local';path:string}|{kind:'remote';fileId:string;downloadUrl?:string};}
 export type EventPayload =
  | {type:'task.started';remoteId?:string}
  | {type:'flow.updated'}
@@ -21,8 +22,8 @@ export type TaskEvent = EventPayload & {taskId:string;eventId:string;timestamp:s
 export interface Snapshot {workspaces:Workspace[];tasks:Task[];artifacts:Artifact[];engines:EngineInfo[];flowBusyTaskIds?:string[];}
 export interface TaskDetail {task:Task;events:TaskEvent[];artifacts:Artifact[];flow?:FlowDetail;}
 export interface Handoff {goal:string;completed:string;findings:string;unresolved:string;next:string;artifactIds:string[];}
-export interface SettingsInput {dshExecutable?:string;workbuddyToken?:string;clearToken?:boolean;reviewApiKey?:string;clearReviewKey?:boolean;reviewModel?:string;pythonExecutable?:string;}
-export interface SettingsView {dshExecutable:string;hasWorkbuddyToken:boolean;secureStorage:boolean;hasReviewKey:boolean;reviewModel:string;pythonExecutable:string;}
+export interface SettingsInput {dshExecutable?:string;codexExecutable?:string;reviewApiKey?:string;clearReviewKey?:boolean;reviewModel?:string;pythonExecutable?:string;}
+export interface SettingsView {dshExecutable:string;codexExecutable:string;secureStorage:boolean;hasReviewKey:boolean;reviewModel:string;pythonExecutable:string;}
 export type Request =
  | {op:'snapshot'} | {op:'workspace.create'} | {op:'task.create';workspaceId:string;engine:EngineId;goal:string;flow?:FlowOptions}
  | {op:'task.detail'|'task.start'|'task.cancel'|'task.recover'|'task.inputs'|'task.artifacts';taskId:string}

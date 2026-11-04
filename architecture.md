@@ -12,7 +12,7 @@
 
 - Demo：本地可重复执行，使用真正的工作区文件；独立标记、独立远端标识，不回退冒充真实引擎。
 - DSH：无 shell 子进程 + ACP JSON-RPC stdio；初始化、建会话、prompt、公开工具事件与权限响应。stderr 排空但不采集展示文本。DSH 公布的 thought 内容不映射。
-- WorkBuddy：固定 REST 主机建任务，拿到 ID 立即持久化，再使用返回通道的 SSE 与 JSON-RPC。审批与真实结构化成果映射。未开放上传/取消则禁用。
+- Codex CLI 由 Node 按任务启动 `codex exec --json`，以 stdin 传入交接内容，解析公开回复和工具事件，进程退出后校验并导入专用输出目录内的普通文件。
 
 检测结果严格分为未配置、待验证、可用、检测失败；「可用」的描述精确限定检测内容，握手/任务列表成功不代表模型或下载成功。
 
@@ -20,7 +20,7 @@
 
 事件含 taskId、eventId、时间、单调本地 sequence、可选 sourceCursor 和判别式 payload。基础事件覆盖 started、delta、tool、artifact、approval 和三种终态。
 
-SQLite `(task_id,event_id)` 唯一约束在事务中去重，再同时更新任务投影和成果表。事件 sequence 由后端在任务内分配，远端游标单独保存。SSE 提供 id 时复用为 eventId；没有游标时本地 UUID 仅保证应用投递去重，不声称能区分厂商无 ID 的重复内容，因此不做可能重复的自动流重连。
+SQLite `(task_id,event_id)` 唯一约束在事务中去重，再同时更新任务投影和成果表。事件 sequence 由后端在任务内分配，远端游标单独保存。
 
 ```mermaid
 stateDiagram-v2
@@ -45,7 +45,7 @@ stateDiagram-v2
 
 ## 4. 恢复策略
 
-启动时把非草稿、非终态的任务标记中断并保留远端 ID。WorkBuddy 显式恢复只查询同一远端任务，不重发 prompt。协议没有历史游标保障时，不拼接重放文本。DSH 本版无可靠未完成请求查询，故禁用恢复。适配器新增恢复需要证明订阅恢复与副作用幂等，而不仅是重放本地事件。
+应用重启后保留既有会话 ID，并把未结束任务标为中断。Codex CLI 首版采用单轮执行，取消通过终止本地进程实现。DSH 未实现未完成请求的状态查询。需要继续时创建关联草稿并显式启动。
 
 ## 5. 成果与接力
 
@@ -57,9 +57,9 @@ stateDiagram-v2
 
 严格 Zod IPC + 主 frame 校验、contextIsolation、禁 Node 集成、默认权限拒绝、禁止导航；HTML iframe 不具备 preload；PDF.js 只绘制页面，不执行文档动作。路径用 realpath 和相对关系判断，防相邻同名前缀与软链接越界，输出独占创建。DSH 自己的工具权限归其安全策略，应用不声称提供 OS 沙箱。
 
-凭据经系统密钥加密后保存，渲染层仅见是否存在；OAuth clientSecret 在独立服务端。远程鉴权主机受限，下载不跟随重定向，不把 ACP token 传给第三方 URL。
+凭据经系统密钥加密后保存，渲染层仅见是否存在；Codex CLI 自行管理登录凭据。
 
-测试集中于去重、终态、并发派发声明、交接归属、目录边界、取消与重启数据；两组协议替身验证官方方法顺序、响应关联、公开增量过滤及远端恢复不重发。Electron smoke 验证真正窗口、桥接、SQLite、预览和接力编辑界面。真实账号联调是独立验收项。
+测试集中于去重、终态、并发派发声明、交接归属、目录边界、取消与重启数据；协议替身验证 DSH 方法顺序、公开增量与 Codex CLI 结构化事件、成果导入及取消。Electron smoke 验证真正窗口、桥接、SQLite、预览和接力编辑界面。真实账号联调是独立验收项。
 
 ## 7. Python 检查 Agent 与可选阶段
 
@@ -67,7 +67,7 @@ stateDiagram-v2
 
 专用阶段服务 `backend/quality/service.ts` 管状态、互斥、基线和快照，不承载模型推理。它通过本地 `flow.updated` 事件通知前端，区别于厂商事件，不把审核问题伪造为 task.failed。准备/审核使用独立运行记录；旧数据库以 CREATE TABLE IF NOT EXISTS 添加三张表，已有 Task 不强制开启流程。
 
-准备结果包含逐项 RequirementCheck。模型的可支撑判断必须能定位原文，规则模式只返回部分支撑/无法判断。用户确认缺口与生成限制后，插入不可覆盖的 Baseline；每次确认为新版本。TaskService 在原来的派发声明前校验最新基线、资料 hash、检查模式及互斥状态，持久化 generationBaselineId 后才调用引擎。生成时提供冻结附件，云端只提供授权摘录，不发送本地路径。
+准备结果包含逐项 RequirementCheck。模型的可支撑判断必须能定位原文，规则模式只返回部分支撑/无法判断。用户确认缺口与生成限制后，插入不可覆盖的 Baseline；每次确认为新版本。TaskService 在原来的派发声明前校验最新基线、资料 hash、检查模式及互斥状态，持久化 generationBaselineId 后才调用引擎。生成时向引擎提供冻结附件。
 
 审核只能读取生成时绑定的基线，不能在任务完成后创建基线。ReviewReport 关联 baselineId、artifactId、成果版本和内容 hash，并保留成果字节快照；公开回答同样冻结。文件修改、成果版本替换、同名更高版本或快照损坏使当前有效性失效，但不改写旧报告。审核返回需修改是业务结果；运行状态仍是 completed。修订通过用户确认创建原引擎关联草稿，随后重新准备，不对有副作用的旧任务执行自动重试。
 

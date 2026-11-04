@@ -2,9 +2,9 @@
 
 RelayDesk 是一个统一管理 AI 任务、输入资料与生成成果的桌面应用。你可以直接让引擎执行任务，也可以先检查资料是否足够，再生成并审核成果，最后把选定成果交给另一个引擎继续处理。
 
-支持独立演示模式、DeepSeek Harness（DSH）和 WorkBuddy。AI 检查能力使用 Python，任务、文件与本地存储使用 Node.js。
+支持独立演示模式、DeepSeek Harness（DSH）和 Codex CLI。AI 检查能力使用 Python，任务、文件与本地存储使用 Node.js。
 
-> DSH、WorkBuddy 已实现协议适配并通过本地协议测试，尚未完成真实账号端到端验证。Python 语义检查同样需要配置 DeepSeek API Key 后联调。演示模式与真实引擎独立，不代表厂商调用成功。
+> DSH 和 Codex CLI 各自管理登录。演示模式可独立运行。Python 语义检查需单独配置 DeepSeek API Key。
 
 ## 功能
 
@@ -109,21 +109,20 @@ RelayDesk 通过 ACP 结构化通信获取公开回答、工具事件和审批�
 
 本版不支持 DSH 成果自动发现和远端任务恢复。生成文件可在工作区查看，并通过成果栏 `+` 关联到已完成任务。DSH 工具的实际权限由其自身配置决定。
 
-### WorkBuddy
+### Codex CLI
 
-1. 根据 [WorkBuddy Open API 文档](https://open.workbuddy.cn/docs/openapi) 注册应用，授权 `user.task.readable` 和 `user.task.invokable`。
-2. 在自己的服务端完成 OAuth 授权，获得用户 access_token。
-3. 在 RelayDesk「引擎与设置」中保存令牌并检测，然后选择 WorkBuddy 创建任务。
+1. 按 [Codex CLI 官方说明](https://learn.chatgpt.com/docs/cli) 安装 CLI，在终端执行 `codex login`，再运行 `codex login status` 确认登录。
+2. 运行 `command -v codex`，把返回的绝对路径填入 RelayDesk「引擎与设置 → Codex CLI」，保存并检测。检测检查 CLI 能力与登录状态，模型权限由实际任务验证。
+3. 新建任务并选择 **Codex CLI**。可先试「生成一份三条要点的 Markdown 说明，保存到 output/说明.md」。
+4. 完成后从成果栏预览、导出或发起接力，也可以在生成前建立资料基线，完成后用 Python Agent 审核成果。
 
-**OAuth clientSecret 必须保留在服务端，不能打包进桌面应用。** 可参考 [OAuth 服务端示例](examples/oauth-server/server.mjs) 和 [配置示例](examples/oauth-server/.env.example)。该示例用于自有应用联调，不提供完整登录与令牌刷新服务。
+RelayDesk 在专用任务目录内启动 `codex exec --json`。它通过 JSON 事件展示工具进度和公开回复，可取消本地任务。附件副本位于 `input/`，执行完成后导入 `output/` 根目录下最多 100 个、每个不超过 20MB 的普通文件。当前 CLI 模式提供单轮执行，交互审批和续接原会话未开放。
 
-当前使用限制：
+想先独立确认 CLI 可用，可在终端执行：
 
-- 检测只验证任务读取权限，创建任务、ACP 和成果下载仍需账号实测。
-- 未实现已验证的本地文件上传能力，不能直接把本地路径交给云端任务。开启准备检查时，本地资料供检查 Agent 使用，生成阶段仅发送基线要求和已确认的文字摘录。
-- 接力到 WorkBuddy 时需取消文件选择，把必要结论写入交接包。
-- 不支持取消任务或恢复历史流订阅。「查询远端」只查询已有任务状态，不重新执行原请求。
-- 成果获取受官方返回接口与下载域限制；无法获取时请通过 WorkBuddy 导出，再关联本地文件。
+```sh
+codex exec --json --sandbox read-only --skip-git-repo-check "回复 OK"
+```
 
 ## 文件预览与检查范围
 

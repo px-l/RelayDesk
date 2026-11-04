@@ -6,19 +6,19 @@ import {QualityService} from './quality/service.js';
 import type {CheckAgent,CheckAgentConfig} from './check-agent.js';
 import {DemoAdapter} from './adapters/demo.js';
 import {DshAdapter} from './adapters/dsh.js';
-import {WorkBuddyAdapter} from './adapters/workbuddy.js';
+import {CodexAdapter} from './adapters/codex.js';
 import type {EngineAdapter,RunContext} from './adapters/base.js';
 import {draftHandoff,handoffText,terminal} from '../shared/domain.js';
 import type {Artifact,EngineId,Handoff,Snapshot,Task,TaskEvent,Workspace,FlowOptions} from '../shared/types.js';
 export class TaskService {
  readonly quality:QualityService;
  readonly adapters:Map<EngineId,EngineAdapter>;private active=new Set<string>();
- constructor(readonly store:Store,config:{dsh:()=>string;token:()=>string;review?:()=>CheckAgentConfig},private notify:(e:TaskEvent)=>void=()=>{},demoSpeed=55,checkAgent?:CheckAgent){
+ constructor(readonly store:Store,config:{dsh:()=>string;codex:()=>string;review?:()=>CheckAgentConfig},private notify:(e:TaskEvent)=>void=()=>{},demoSpeed=55,checkAgent?:CheckAgent){
  this.quality=new QualityService(store,config.review||(()=>({key:'',model:'deepseek-flash'})),checkAgent,id=>{const event:TaskEvent={type:'flow.updated',taskId:id,eventId:randomUUID(),timestamp:new Date().toISOString(),sequence:0};if(store.append(event))this.notify(event);});
- this.adapters=new Map<EngineId,EngineAdapter>([['demo',new DemoAdapter('demo',demoSpeed)],['demo-review',new DemoAdapter('demo-review',demoSpeed)],['dsh',new DshAdapter(config.dsh)],['workbuddy',new WorkBuddyAdapter(config.token)]]);
+ this.adapters=new Map<EngineId,EngineAdapter>([['demo',new DemoAdapter('demo',demoSpeed)],['demo-review',new DemoAdapter('demo-review',demoSpeed)],['dsh',new DshAdapter(config.dsh)],['codex',new CodexAdapter(config.codex)]]);
  for(const t of store.list<Task>('tasks'))if(!terminal(t.status)&&t.status!=='draft'){t.status='interrupted';t.error='上次执行已中断。本地事件是历史记录，不代表远端已恢复。请查询远端状态；演示任务可新建重试。';store.putTask(t);}
  }
- adapter(id:EngineId){const a=this.adapters.get(id);if(!a)throw new Error('未知引擎');return a;}
+ adapter(id:Task['engine']){if(id==='retired')throw new Error('历史引擎已停用，请创建新任务或接力到当前引擎。');const a=this.adapters.get(id);if(!a)throw new Error('未知引擎');return a;}
  snapshot():Snapshot{return {workspaces:this.store.list('workspaces'),tasks:this.store.list('tasks'),artifacts:this.store.list('artifacts'),engines:[...this.adapters.values()].map(a=>a.info()),flowBusyTaskIds:this.quality.busyIds()};}
  detail(id:string){return {task:this.store.task(id),events:this.store.events(id),artifacts:this.store.list<Artifact>('artifacts').filter(a=>a.taskId===id)};}
  create(workspaceId:string,engine:EngineId,goal:string,parentId?:string,handoff?:string,flow?:FlowOptions):Task{this.store.workspace(workspaceId);this.adapter(engine);if(flow?.review&&!flow.preparation)throw new Error('审核依赖资料准备检查');const t:Task={id:randomUUID(),workspaceId,engine,title:goal.replace(/^#.*\n/,'').trim().slice(0,32)||'接力任务',goal,status:'draft',inputs:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),dispatched:false,parentId,handoff,flow};this.store.putTask(t);return t;}
@@ -41,7 +41,7 @@ export class TaskService {
  const w=this.store.workspace(source.workspaceId);for(const a of selected){if(a.location.kind!=='local')throw new Error('云端成果尚未下载到授权目录，不能作为本地文件接力');await within(w.directory,a.location.path);}
  const text=handoffText(h,selected);const t=this.create(source.workspaceId,engine,text,id,text);t.originalGoal=h.goal;t.title=`接力 · ${source.title.slice(0,25)}`;t.inputs=selected.map(a=>({id:randomUUID(),name:a.name,path:a.location.kind==='local'?a.location.path:'',size:0}));this.store.putTask(t);return t;
  }
- async repair(id:string,reviewId:string){const {source,goal}=this.quality.repairPrompt(id,reviewId);const r=this.store.reviews(id).find(r=>r.id===reviewId)!;if(!await this.quality.reviewValid(source,r))throw new Error('成果已变化，请先重新审核');const t=this.create(source.workspaceId,source.engine,goal,source.id,undefined,{...source.flow!,preparation:true});t.originalGoal=source.originalGoal||source.goal;t.title=`修改 · ${source.title.slice(0,25)}`;t.inputs=[...source.inputs];this.store.putTask(t);return t;}
+ async repair(id:string,reviewId:string){const {source,goal}=this.quality.repairPrompt(id,reviewId);const r=this.store.reviews(id).find(r=>r.id===reviewId)!;if(!await this.quality.reviewValid(source,r))throw new Error('成果已变化，请先重新审核');if(source.engine==='retired')throw new Error('历史引擎已停用，请接力到当前引擎。');const t=this.create(source.workspaceId,source.engine,goal,source.id,undefined,{...source.flow!,preparation:true});t.originalGoal=source.originalGoal||source.goal;t.title=`修改 · ${source.title.slice(0,25)}`;t.inputs=[...source.inputs];this.store.putTask(t);return t;}
  async syncArtifacts(id:string){const t=this.store.task(id);const items=await this.adapter(t.engine).getArtifacts(t);for(const artifact of items){const e:TaskEvent={type:'artifact.created',artifact,taskId:id,eventId:randomUUID(),timestamp:new Date().toISOString(),sequence:0};if(this.store.append(e))this.notify(e);}return this.detail(id);}
  async approve(id:string,requestId:string,optionId:string){const t=this.store.task(id);const a=this.adapter(t.engine);if(t.status!=='waiting_input'||!a.approve)throw new Error('审批不可用');await a.approve(t,requestId,optionId);t.pendingApprovals=t.pendingApprovals?.filter(p=>p.requestId!==requestId);t.status=t.pendingApprovals?.length?'waiting_input':'running';this.store.putTask(t);}
  dispose(){this.quality.dispose();this.adapters.forEach(a=>a.dispose());}
