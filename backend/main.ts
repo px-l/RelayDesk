@@ -1,6 +1,7 @@
 import {app,BrowserWindow,dialog,ipcMain,safeStorage,shell,session} from 'electron';
 import {mkdir,readFile,writeFile,realpath,copyFile,stat} from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {runSmoke} from './smoke.js';
@@ -10,6 +11,10 @@ import {requestSchema} from './validation.js';
 import {outputDir,readable,within,writeOutput,mimeForName} from './files.js';
 import type {Preview,SettingsView,Task,Workspace} from '../shared/types.js';
 const here=path.dirname(fileURLToPath(import.meta.url));const smoke=process.argv.includes('--smoke');
+// WSLg 的窗口标题栏由系统发行版渲染，该发行版不含中文字体，中文会显示为十六进制方框。
+// 因此在 WSL 下改用纯 ASCII 标题；应用内的中文界面不受影响。
+const isWsl=process.platform==='linux'&&(!!process.env.WSL_DISTRO_NAME||/microsoft/i.test(os.release()));
+const windowTitle=isWsl?'RelayDesk · Handoff Workbench':'RelayDesk · 接力工作台';
 if(smoke)app.setPath('userData',path.join('/tmp',`relaydesk-smoke-${process.pid}`));
 let win:BrowserWindow;let service:TaskService;let store:Store;
 let settings={dshExecutable:'',codexExecutable:'',encryptedReviewKey:'',reviewModel:'deepseek-flash',pythonExecutable:''};let reviewKey='';
@@ -52,7 +57,8 @@ async function initialize(){
  }
  return {ok:true,value};}catch(e){return {ok:false,error:e instanceof Error?e.message:'操作失败'};}});
  session.defaultSession.setPermissionRequestHandler((_wc,_p,callback)=>callback(false));
- win=new BrowserWindow({width:1440,height:940,minWidth:1080,minHeight:720,title:'RelayDesk · 接力工作台',backgroundColor:'#f7f8fa',titleBarStyle:'hiddenInset',webPreferences:{preload:path.join(here,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,webviewTag:false}});
+ win=new BrowserWindow({width:1440,height:940,minWidth:1080,minHeight:720,title:windowTitle,backgroundColor:'#f7f8fa',titleBarStyle:'hiddenInset',webPreferences:{preload:path.join(here,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,webviewTag:false}});
+ win.webContents.on('page-title-updated',e=>{e.preventDefault();if(!win.isDestroyed())win.setTitle(windowTitle);});
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());win.webContents.on('will-attach-webview',e=>e.preventDefault());
  const csp="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:5173 ws://127.0.0.1:5173; worker-src 'self' blob:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'";
  session.defaultSession.webRequest.onHeadersReceived((details,callback)=>callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':[csp]}}));
